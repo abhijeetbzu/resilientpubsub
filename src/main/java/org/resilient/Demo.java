@@ -1,65 +1,64 @@
 package org.resilient;
 
+import com.google.pubsub.v1.PublishRequest;
 import com.google.pubsub.v1.PublishResponse;
 import com.google.pubsub.v1.TopicName;
+import lombok.SneakyThrows;
 
-import java.io.IOException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class Demo {
     public static final CircuitBreakerFactory circuitBreakerFactory = new CircuitBreakerFactory();
+    public static final ConcurrentHashMap<PublishRequest, AtomicReference<Future<PublishResponse>>> futureMap =
+            new ConcurrentHashMap<>();
 
-    public static ResilientPublisher getResilientPublisher(ResilientPublisher fallbackPublisher,
-                                                           String endpoint, String circuitBreakerName)
-            throws IOException {
-        PublisherComponentFactory publisherComponentFactory = new PublisherComponentFactory(endpoint);
-        TopicAdminClientFactory topicAdminClientFactory = new TopicAdminClientFactory(publisherComponentFactory);
-        PubSubIngestor pubSubIngestor = new PubSubIngestor(topicAdminClientFactory);
-        return new ResilientPublisher(fallbackPublisher,
-                pubSubIngestor, circuitBreakerFactory, circuitBreakerName);
-    }
+    public static final RequestExecutionInfoHolder requestExecutionInfoHolder = new RequestExecutionInfoHolder();
 
-    public static ResilientPublisher getResilientPublisher(String endpoint, String circuitBreakerName)
-            throws IOException {
-        return getResilientPublisher(null, endpoint, circuitBreakerName);
-    }
-
-    public static void test(ExecutorService executorService,final ResilientPublisher resilientPublisher,
-                            TopicName topicName) throws InterruptedException {
-        int i = 1;
-        while (i < 200) {
-            String message = "Hello" + i + "!";
+    public static void test(ExecutorService executorService, final ResilientPublisherFactory resilientPublisherFactory,
+                            TopicName topicName, int start, int end) throws InterruptedException {
+        while (start <= end) {
+            String message = "Hello" + start + "!";
             executorService.submit(new Runnable() {
+                @SneakyThrows
                 @Override
                 public void run() {
+                    ResilientPublisher activePublisher = resilientPublisherFactory.getActivePublisher();
+                    PublishRequest publishRequest = activePublisher.getPublishRequest(topicName, message);
                     try {
-                        Future<PublishResponse> publishResponseFuture = resilientPublisher.
-                                publish(topicName, message);
-                        //PublishResponse publishResponse = publishResponseFuture.get();
-//                        System.out.println("Message '" + message + "': " + publishResponse.getMessageIdsCount());
-                    } catch (Throwable e) {
-                        System.out.println();
+                        Future<PublishResponse> publishResponseFuture = activePublisher.
+                                publish(publishRequest, topicName);
+                        requestExecutionInfoHolder.append(publishRequest,
+                                "Received future object successfully. Executing get()..");
+                        PublishResponse publishResponse = publishResponseFuture.get();
+                        requestExecutionInfoHolder.append(publishRequest,
+                                "Message '" + message + "': " + publishResponse.getMessageIdsCount());
+                    } catch (Exception e) {
+                        requestExecutionInfoHolder.append(publishRequest,
+                                "Exception while pushing:  " + e.getMessage());
                     }
+                    requestExecutionInfoHolder.print(publishRequest);
                 }
             });
-            if ((i % 30) == 0) TimeUnit.SECONDS.sleep(10);
-            i++;
+            if ((start % 30) == 0) TimeUnit.SECONDS.sleep(10);
+            start++;
         }
     }
 
     public static void main(String[] args) throws Throwable {
+        ResilientPublisherFactory resilientPublisherFactory = new ResilientPublisherFactory(circuitBreakerFactory);
+
         String endpointA = "asia-south2-pubsub.googleapis.com:443";
         String circuitBreakerNameA = "cbA";
-        ResilientPublisher resilientPublisherA = getResilientPublisher(endpointA, circuitBreakerNameA);
+        ResilientPublisher resilientPublisherA = resilientPublisherFactory.
+                getResilientPublisher(endpointA, circuitBreakerNameA);
 
 
         String endpointB = "asia-south-pubsub.googleapis.com:443";
         String circuitBreakerNameB = "cbB";
-        ResilientPublisher resilientPublisherB = getResilientPublisher(resilientPublisherA,
-                endpointB, circuitBreakerNameB);
+        ResilientPublisher resilientPublisherB = resilientPublisherFactory.
+                getResilientPublisher(resilientPublisherA, endpointB, circuitBreakerNameB);
+        resilientPublisherFactory.setPrimaryPublisher(resilientPublisherB);
 
 
         String projectId = "fk-sanbox-fdp-temp-1";
@@ -67,51 +66,14 @@ public class Demo {
         TopicName topicName = TopicName.of(projectId, topic);
 
         ExecutorService executorService = Executors.newFixedThreadPool(20);
-        int i = 1;
-        while (i < 200) {
-            String message = "Hello" + i + "!";
-            executorService.submit(new Runnable() {
-                @Override
-                public void run() {
-                    try {
-                        Future<PublishResponse> publishResponseFuture = resilientPublisherB.
-                                publish(topicName, message);
-                        //PublishResponse publishResponse = publishResponseFuture.get();
-//                        System.out.println("Message '" + message + "': " + publishResponse.getMessageIdsCount());
-                    } catch (Throwable e) {
-                        System.out.println();
-                    }
-                }
-            });
-            if ((i % 30) == 0) TimeUnit.SECONDS.sleep(10);
-            i++;
-        }
+        test(executorService, resilientPublisherFactory, topicName, 0, 200);
 
-        System.out.println("done");
         endpointB = "asia-south1-pubsub.googleapis.com:443";
-        ResilientPublisher resilientPublisherC = getResilientPublisher(resilientPublisherA,
+        ResilientPublisher resilientPublisherC = resilientPublisherFactory.getResilientPublisher(resilientPublisherA,
                 endpointB, circuitBreakerNameB);
+        resilientPublisherFactory.setPrimaryPublisher(resilientPublisherC);
+        System.out.println("Endpoint Up");
 
-        i = 201;
-        while (i < 500) {
-            String message = "Hello" + i + "!";
-            executorService.submit(new Runnable() {
-                @Override
-                public void run() {
-                    try {
-                        Future<PublishResponse> publishResponseFuture = resilientPublisherC.
-                                publish(topicName, message);
-                        //PublishResponse publishResponse = publishResponseFuture.get();
-//                        System.out.println("Message '" + message + "': " + publishResponse.getMessageIdsCount());
-                    } catch (Throwable e) {
-                        System.out.println();
-                    }
-                }
-            });
-            if ((i % 30) == 0) TimeUnit.SECONDS.sleep(10);
-            i++;
-        }
-
-
+        test(executorService, resilientPublisherFactory, topicName, 201, 500);
     }
 }

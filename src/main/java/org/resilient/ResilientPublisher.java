@@ -11,12 +11,11 @@ import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.decorators.Decorators;
 import io.vavr.CheckedFunction0;
-import lombok.SneakyThrows;
 
 import java.util.Collections;
-import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
-import java.util.concurrent.FutureTask;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class ResilientPublisher extends ResilientPublisherTemplate {
     private final ResilientPublisher fallbackPublisher;
@@ -37,53 +36,76 @@ public class ResilientPublisher extends ResilientPublisherTemplate {
         this.circuitBreakerName = circuitBreakerName;
     }
 
-    @Override
-    public Future<PublishResponse> publish(TopicName topicName, String message) {
-
+    public Future<PublishResponse> publish2(TopicName topicName, String message) {
         PublishRequest publishRequest = getPublishRequest(topicName, message);
-        PubSubCallback pubSubCallback = new PubSubCallback(publishRequest, this, message);
+        PubSubCallback pubSubCallback = new PubSubCallback(publishRequest, this, topicName);
         String cbname = getCircuitBreaker().getName();
 
-        FutureTask<PublishResponse> futureTask = new FutureTask<>(new Callable<PublishResponse>() {
-            @SneakyThrows
-            @Override
-            public PublishResponse call() throws Exception {
-                UnaryCallable<PublishRequest, PublishResponse> publishCallable = getPublishCallable();
-                CircuitBreaker circuitBreaker = getCircuitBreaker();
+        UnaryCallable<PublishRequest, PublishResponse> publishCallable = getPublishCallable();
+        CircuitBreaker circuitBreaker = getCircuitBreaker();
+        ApiFuture<PublishResponse> apiFuture = publishCallable.futureCall(publishRequest);
+        ApiFutures.addCallback(
+                apiFuture,
+                pubSubCallback,
+                MoreExecutors.directExecutor());
 
-                CheckedFunction0<PublishResponse> decorated = Decorators
-                        .ofCheckedSupplier(() -> {
-                            ApiFuture<PublishResponse> apiFuture = publishCallable.futureCall(publishRequest);
-                            ApiFutures.addCallback(
-                                    apiFuture,
-                                    pubSubCallback,
-                                    MoreExecutors.directExecutor());
-                            return apiFuture.get();
+        CheckedFunction0<PublishResponse> decorated = Decorators
+                .ofCheckedSupplier(() -> {
+                    return apiFuture.get();
+                })
+                .withCircuitBreaker(circuitBreaker)
+                .withFallback(
+                        Collections.singletonList(CallNotPermittedException.class),
+                        e -> {
+                            System.out.println("Call not permitted for message: " + message + " using " +
+                                    cbname);
+                            ResilientPublisher fallbackPublisher = getFallbackPublisher();
+                            if (fallbackPublisher != null)
+                                return fallbackPublisher.publish(publishRequest, topicName).get();
+                            return null;
                         })
-                        .withCircuitBreaker(circuitBreaker)
-                        .withFallback(
-                                Collections.singletonList(CallNotPermittedException.class),
-                                e -> {
-                                    System.out.println("Call not permitted for message: " + message + " using " +
-                                            cbname);
-                                    ResilientPublisher fallbackPublisher = getFallbackPublisher();
-                                    if(fallbackPublisher != null)
-                                        return fallbackPublisher.publish(topicName, message).get();
-                                    return null;
-                                })
-                        .decorate();
+                .decorate();
 
-                return decorated.apply();
-            }
-        });
 
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                futureTask.run();
-            }
-        }).start();
-        return futureTask;
+        CompletableFuture<PublishResponse> c = Decorators.ofCompletionStage(() -> {
+            return CompletableFuture.supplyAsync(() -> {
+                try {
+                    return decorated.apply();
+                } catch (Throwable e) {
+                    return null;
+                }
+            });
+        }).get().toCompletableFuture();
+
+
+        return c;
+    }
+
+    @Override
+    public Future<PublishResponse> publish(final PublishRequest publishRequest, TopicName topicName) {
+        PubSubCallback pubSubCallback = new PubSubCallback(publishRequest, this, topicName);
+
+        UnaryCallable<PublishRequest, PublishResponse> publishCallable = getPublishCallable();
+        ApiFuture<PublishResponse> apiFuture = publishCallable.futureCall(publishRequest);
+        ApiFutures.addCallback(
+                apiFuture,
+                pubSubCallback,
+                MoreExecutors.directExecutor());
+
+        if(!Demo.futureMap.containsKey(publishRequest)){
+            //fresh publish request, add future object to global future map
+            Demo.futureMap.put(publishRequest, new AtomicReference<>(apiFuture));
+        }
+
+        /*  else request already there in global future map, means this request has come from other publisher
+            and this publisher is fallback for that publisher and callback for future object returned from
+            that publisher will add future object returned from this publisher into global future map
+        */
+        return new IngestionFuture(apiFuture, publishRequest);
+    }
+
+    private <T> Future<T> get() {
+        return null;
     }
 
     @Override
