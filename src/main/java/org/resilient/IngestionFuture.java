@@ -7,7 +7,7 @@ import java.util.concurrent.*;
 
 public class IngestionFuture implements Future<PublishResponse> {
 
-    private volatile Future<PublishResponse> apiFuture;
+    private Future<PublishResponse> apiFuture;
     private final PublishRequest publishRequest;
     private boolean isDone = false;
 

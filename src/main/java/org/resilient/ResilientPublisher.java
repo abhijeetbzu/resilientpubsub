@@ -11,6 +11,7 @@ import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.decorators.Decorators;
 import io.vavr.CheckedFunction0;
+import lombok.SneakyThrows;
 
 import java.util.Collections;
 import java.util.concurrent.CompletableFuture;
@@ -102,10 +103,6 @@ public class ResilientPublisher extends ResilientPublisherTemplate {
                 pubSubCallback,
                 MoreExecutors.directExecutor());
         return new IngestionFuture(apiFuture, publishRequest);
-    }
-
-    private <T> Future<T> get() {
-        return null;
     }
 
     @Override
