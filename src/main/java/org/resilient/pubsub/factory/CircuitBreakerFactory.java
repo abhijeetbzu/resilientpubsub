@@ -1,4 +1,4 @@
-package org.resilient;
+package org.resilient.pubsub.factory;
 
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
@@ -20,9 +20,18 @@ public class CircuitBreakerFactory {
                 .failureRateThreshold(70.0f)
                 .automaticTransitionFromOpenToHalfOpenEnabled(true)
                 .minimumNumberOfCalls(10)
+                .maxWaitDurationInHalfOpenState(Duration.ofSeconds(20))
                 .build();
 
         circuitBreakerRegistry = CircuitBreakerRegistry.of(config);
+    }
+
+    public CircuitBreakerFactory(CircuitBreakerConfig circuitBreakerConfig) {
+        circuitBreakerRegistry = CircuitBreakerRegistry.of(circuitBreakerConfig);
+    }
+
+    public CircuitBreakerFactory(CircuitBreakerRegistry circuitBreakerRegistry) {
+        this.circuitBreakerRegistry = circuitBreakerRegistry;
     }
 
     public CircuitBreaker getOrCreate(String name) {

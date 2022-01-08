@@ -1,6 +1,9 @@
-package org.resilient;
+package org.resilient.pubsub.example;
 
 import com.google.cloud.pubsub.v1.TopicAdminClient;
+import org.resilient.pubsub.example.utils.TopicPublishTask;
+import org.resilient.pubsub.factory.PublisherComponentFactory;
+import org.resilient.pubsub.factory.TopicAdminClientFactory;
 
 import java.io.IOException;
 import java.util.*;
@@ -11,9 +14,10 @@ public class BatchTesting {
     public static void main(String[] args) throws IOException {
 
         String endpoint = "asia-south1-pubsub.googleapis.com:443";
+        PublisherComponentFactory publisherComponentFactory = new PublisherComponentFactory(endpoint);
+        TopicAdminClientFactory topicAdminClientFactory = new TopicAdminClientFactory(publisherComponentFactory);
 
-        TopicAdminClient topicAdminClient = App.getTopicAdminClient(endpoint);
-        System.out.println(topicAdminClient.getSettings().getEndpoint());
+        TopicAdminClient topicAdminClient = topicAdminClientFactory.getTopicAdminClient();
 
         String projectId = "fk-sanbox-fdp-temp-1";
         List<String> topics = new ArrayList<>(Arrays.asList(
@@ -38,6 +42,7 @@ public class BatchTesting {
             executorService.submit(topicPublishTask);
         }
 
+        System.out.println("Enter String in this format: (Message,Topic)");
         while (true) {
             Scanner scanner = new Scanner(System.in);
             String req = scanner.nextLine();

@@ -1,6 +1,7 @@
-package org.resilient;
+package org.resilient.pubsub.factory;
 
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
+import org.resilient.pubsub.ingestion.ResilientPublisher;
 
 import java.io.IOException;
 import java.util.concurrent.atomic.AtomicReference;
@@ -18,9 +19,8 @@ public class ResilientPublisherFactory {
             throws IOException {
         PublisherComponentFactory publisherComponentFactory = new PublisherComponentFactory(endpoint);
         TopicAdminClientFactory topicAdminClientFactory = new TopicAdminClientFactory(publisherComponentFactory);
-        PubSubIngestor pubSubIngestor = new PubSubIngestor(topicAdminClientFactory);
         return new ResilientPublisher(fallbackPublisher,
-                pubSubIngestor, circuitBreakerFactory, circuitBreakerName);
+                topicAdminClientFactory, circuitBreakerFactory, circuitBreakerName);
     }
 
     public ResilientPublisher getResilientPublisher(String endpoint, String circuitBreakerName)

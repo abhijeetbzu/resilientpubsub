@@ -1,9 +1,14 @@
-package org.resilient;
+package org.resilient.pubsub.example;
 
 import com.google.pubsub.v1.PublishRequest;
 import com.google.pubsub.v1.PublishResponse;
 import com.google.pubsub.v1.TopicName;
 import lombok.SneakyThrows;
+import org.resilient.pubsub.factory.CircuitBreakerFactory;
+import org.resilient.pubsub.example.utils.RequestExecutionInfoHolder;
+import org.resilient.pubsub.ingestion.ResilientPublisher;
+import org.resilient.pubsub.factory.ResilientPublisherFactory;
+import org.resilient.pubsub.utils.PubSubHelper;
 
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
@@ -24,7 +29,7 @@ public class Demo {
                 @Override
                 public void run() {
                     ResilientPublisher activePublisher = resilientPublisherFactory.getActivePublisher();
-                    PublishRequest publishRequest = activePublisher.getPublishRequest(topicName, message);
+                    PublishRequest publishRequest = PubSubHelper.getPublishRequest(topicName, message);
                     try {
                         Future<PublishResponse> publishResponseFuture = activePublisher.
                                 publish(publishRequest, topicName);
@@ -37,6 +42,7 @@ public class Demo {
                         requestExecutionInfoHolder.append(publishRequest,
                                 "Exception while pushing:  " + e.getMessage());
                     }
+                    requestExecutionInfoHolder.close(publishRequest);
                     requestExecutionInfoHolder.print(publishRequest);
                 }
             });
@@ -75,5 +81,7 @@ public class Demo {
         System.out.println("Endpoint Up");
 
         test(executorService, resilientPublisherFactory, topicName, 201, 500);
+
+        executorService.shutdown();
     }
 }

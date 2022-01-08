@@ -1,12 +1,12 @@
-package org.resilient;
+package org.resilient.pubsub.ingestion;
 
 import com.google.api.core.ApiFutureCallback;
 import com.google.pubsub.v1.PublishRequest;
 import com.google.pubsub.v1.PublishResponse;
 import com.google.pubsub.v1.TopicName;
 import io.vavr.control.Try;
+import org.resilient.pubsub.example.Demo;
 
-import java.util.List;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -50,7 +50,6 @@ public class PubSubCallback implements ApiFutureCallback<PublishResponse> {
     @Override
     public void onSuccess(PublishResponse publishResponse) {
         // Once published, returns server-assigned message ids (unique within the topic)
-        List<String> messageIds = publishResponse.getMessageIdsList();
         Demo.requestExecutionInfoHolder.append(publishRequest, "Published message ID: " + message + " using " +
                 resilientPublisher.getCircuitBreaker().getName());
     }

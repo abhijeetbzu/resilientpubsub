@@ -1,4 +1,4 @@
-package org.resilient;
+package org.resilient.pubsub.factory;
 
 import com.google.api.gax.batching.BatchingSettings;
 import com.google.api.gax.retrying.RetrySettings;
@@ -31,18 +31,15 @@ public class PublisherComponentFactory implements IngestionComponentFactory {
         Duration maxRpcTimeout = Duration.ofSeconds(600); // default: 600 seconds
         Duration totalTimeout = Duration.ofSeconds(600); // default: 600 seconds
 
-        RetrySettings retrySettings =
-                RetrySettings.newBuilder()
-                        .setInitialRetryDelay(initialRetryDelay)
-                        .setRetryDelayMultiplier(retryDelayMultiplier)
-                        .setMaxRetryDelay(maxRetryDelay)
-                        .setInitialRpcTimeout(initialRpcTimeout)
-                        .setRpcTimeoutMultiplier(rpcTimeoutMultiplier)
-                        .setMaxRpcTimeout(maxRpcTimeout)
-                        .setTotalTimeout(totalTimeout)
-                        .build();
-
-        return retrySettings;
+        return RetrySettings.newBuilder()
+                .setInitialRetryDelay(initialRetryDelay)
+                .setRetryDelayMultiplier(retryDelayMultiplier)
+                .setMaxRetryDelay(maxRetryDelay)
+                .setInitialRpcTimeout(initialRpcTimeout)
+                .setRpcTimeoutMultiplier(rpcTimeoutMultiplier)
+                .setMaxRpcTimeout(maxRpcTimeout)
+                .setTotalTimeout(totalTimeout)
+                .build();
     }
 
     @Override

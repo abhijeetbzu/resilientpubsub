@@ -1,4 +1,4 @@
-package org.resilient;
+package org.resilient.pubsub.ingestion;
 
 import com.google.api.core.ApiFuture;
 import com.google.api.core.ApiFutures;
@@ -11,34 +11,38 @@ import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.decorators.Decorators;
 import io.vavr.CheckedFunction0;
-import lombok.SneakyThrows;
+import org.resilient.pubsub.example.Demo;
+import org.resilient.pubsub.factory.CircuitBreakerFactory;
+import org.resilient.pubsub.factory.IngestionClientFactory;
+import org.resilient.pubsub.utils.PubSubHelper;
 
 import java.util.Collections;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicReference;
 
-public class ResilientPublisher extends ResilientPublisherTemplate {
+public class ResilientPublisher implements IPublisher<PublishResponse>, IResilient {
     private final ResilientPublisher fallbackPublisher;
-    private final PubSubIngestor pubSubIngestor;
+    private final IngestionClientFactory ingestionClientFactory;
     private final CircuitBreakerFactory circuitBreakerFactory;
     private final String circuitBreakerName;
 
-    public ResilientPublisher(PubSubIngestor pubSubIngestor, CircuitBreakerFactory circuitBreakerFactory,
+    public ResilientPublisher(IngestionClientFactory ingestionClientFactory,
+                              CircuitBreakerFactory circuitBreakerFactory,
                               String circuitBreakerName) {
-        this(null, pubSubIngestor, circuitBreakerFactory, circuitBreakerName);
+        this(null, ingestionClientFactory, circuitBreakerFactory, circuitBreakerName);
     }
 
-    public ResilientPublisher(ResilientPublisher resilientPublisher, PubSubIngestor pubSubIngestor
+    public ResilientPublisher(ResilientPublisher fallbackPublisher, IngestionClientFactory ingestionClientFactory
             , CircuitBreakerFactory circuitBreakerFactory, String circuitBreakerName) {
-        fallbackPublisher = resilientPublisher;
+        this.fallbackPublisher = fallbackPublisher;
         this.circuitBreakerFactory = circuitBreakerFactory;
-        this.pubSubIngestor = pubSubIngestor;
+        this.ingestionClientFactory = ingestionClientFactory;
         this.circuitBreakerName = circuitBreakerName;
     }
 
     public Future<PublishResponse> publish2(TopicName topicName, String message) {
-        PublishRequest publishRequest = getPublishRequest(topicName, message);
+        PublishRequest publishRequest = PubSubHelper.getPublishRequest(topicName, message);
         PubSubCallback pubSubCallback = new PubSubCallback(publishRequest, this, topicName);
         String cbname = getCircuitBreaker().getName();
 
@@ -89,7 +93,7 @@ public class ResilientPublisher extends ResilientPublisherTemplate {
         UnaryCallable<PublishRequest, PublishResponse> publishCallable = getPublishCallable();
         ApiFuture<PublishResponse> apiFuture = publishCallable.futureCall(publishRequest);
 
-        if(!Demo.futureMap.containsKey(publishRequest)){
+        if (!Demo.futureMap.containsKey(publishRequest)) {
             //fresh publish request, add future object to global future map
             Demo.futureMap.put(publishRequest, new AtomicReference<>(apiFuture));
         }
@@ -106,22 +110,16 @@ public class ResilientPublisher extends ResilientPublisherTemplate {
     }
 
     @Override
-    CircuitBreaker getCircuitBreaker() {
+    public CircuitBreaker getCircuitBreaker() {
         return circuitBreakerFactory.getOrCreate(circuitBreakerName);
     }
 
     @Override
-    ResilientPublisher getFallbackPublisher() {
+    public ResilientPublisher getFallbackPublisher() {
         return fallbackPublisher;
     }
 
-    @Override
-    public UnaryCallable<PublishRequest, PublishResponse> getPublishCallable() {
-        return pubSubIngestor.getPublishCallable();
-    }
-
-    @Override
-    public PublishRequest getPublishRequest(TopicName topicName, String message) {
-        return pubSubIngestor.getPublishRequest(topicName, message);
+    private UnaryCallable<PublishRequest, PublishResponse> getPublishCallable() {
+        return ingestionClientFactory.getTopicAdminClient().publishCallable();
     }
 }

@@ -1,4 +1,4 @@
-package org.resilient;
+package org.resilient.pubsub.example.utils;
 
 import com.google.api.core.ApiFuture;
 import com.google.api.core.ApiFutureCallback;
