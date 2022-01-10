@@ -11,10 +11,10 @@ import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.decorators.Decorators;
 import io.vavr.CheckedFunction0;
-import org.resilient.pubsub.example.Demo;
 import org.resilient.pubsub.factory.CircuitBreakerFactory;
 import org.resilient.pubsub.factory.IngestionClientFactory;
 import org.resilient.pubsub.utils.PubSubHelper;
+import org.resilient.pubsub.utils.PubSubRequestFutureHolder;
 
 import java.util.Collections;
 import java.util.concurrent.CompletableFuture;
@@ -93,10 +93,7 @@ public class ResilientPublisher implements IPublisher<PublishResponse>, IResilie
         UnaryCallable<PublishRequest, PublishResponse> publishCallable = getPublishCallable();
         ApiFuture<PublishResponse> apiFuture = publishCallable.futureCall(publishRequest);
 
-        if (!Demo.futureMap.containsKey(publishRequest)) {
-            //fresh publish request, add future object to global future map
-            Demo.futureMap.put(publishRequest, new AtomicReference<>(apiFuture));
-        }
+        PubSubRequestFutureHolder.futureMap.putIfAbsent(publishRequest, new AtomicReference<>(apiFuture));
 
         /*  else request already there in global future map, means this request has come from other publisher
             and this publisher is fallback for that publisher and callback for future object returned from

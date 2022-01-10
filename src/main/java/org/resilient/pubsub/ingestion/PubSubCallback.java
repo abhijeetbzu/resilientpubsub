@@ -6,6 +6,7 @@ import com.google.pubsub.v1.PublishResponse;
 import com.google.pubsub.v1.TopicName;
 import io.vavr.control.Try;
 import org.resilient.pubsub.example.Demo;
+import org.resilient.pubsub.utils.PubSubRequestFutureHolder;
 
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicReference;
@@ -42,7 +43,7 @@ public class PubSubCallback implements ApiFutureCallback<PublishResponse> {
             can do get() on updated future
          */
         if (resilientPublisher.getFallbackPublisher() != null) {
-            AtomicReference<Future<PublishResponse>> apiFuture = Demo.futureMap.get(publishRequest);
+            AtomicReference<Future<PublishResponse>> apiFuture = PubSubRequestFutureHolder.futureMap.get(publishRequest);
             apiFuture.set(resilientPublisher.getFallbackPublisher().publish(publishRequest, topicName));
         }
     }

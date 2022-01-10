@@ -2,7 +2,7 @@ package org.resilient.pubsub.ingestion;
 
 import com.google.pubsub.v1.PublishRequest;
 import com.google.pubsub.v1.PublishResponse;
-import org.resilient.pubsub.example.Demo;
+import org.resilient.pubsub.utils.PubSubRequestFutureHolder;
 
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
@@ -47,7 +47,7 @@ public class IngestionFuture implements Future<PublishResponse> {
     private PublishResponse execute(Future<PublishResponse> future) throws ExecutionException, InterruptedException {
         PublishResponse publishResponse = future.get();
         isDone = true;
-        Demo.futureMap.remove(publishRequest);
+        PubSubRequestFutureHolder.futureMap.remove(publishRequest);
         return publishResponse;
     }
 
@@ -55,7 +55,7 @@ public class IngestionFuture implements Future<PublishResponse> {
             throws ExecutionException, InterruptedException, TimeoutException {
         PublishResponse publishResponse = future.get(timeout, unit);
         isDone = true;
-        Demo.futureMap.remove(publishRequest);
+        PubSubRequestFutureHolder.futureMap.remove(publishRequest);
         return publishResponse;
     }
 
@@ -67,7 +67,7 @@ public class IngestionFuture implements Future<PublishResponse> {
 
     @Override
     public PublishResponse get() throws InterruptedException, ExecutionException {
-        while (Demo.futureMap.containsKey(publishRequest)) {
+        while (PubSubRequestFutureHolder.futureMap.containsKey(publishRequest)) {
             try {
                 return execute(apiFuture);
             } catch (ExecutionException e) {
@@ -75,7 +75,7 @@ public class IngestionFuture implements Future<PublishResponse> {
                     means updated future object will be added for this request soon by callback
                     so continue till we find new future object which have success response
                  */
-                Future<PublishResponse> future = Demo.futureMap.get(publishRequest).get();
+                Future<PublishResponse> future = PubSubRequestFutureHolder.futureMap.get(publishRequest).get();
                 if (future != this)
                     apiFuture = future;
             } catch (Exception e) {
@@ -92,7 +92,7 @@ public class IngestionFuture implements Future<PublishResponse> {
     @Override
     public PublishResponse get(long timeout, TimeUnit unit) throws InterruptedException, ExecutionException,
             TimeoutException {
-        while (Demo.futureMap.containsKey(publishRequest)) {
+        while (PubSubRequestFutureHolder.futureMap.containsKey(publishRequest)) {
             try {
                 return execute(apiFuture, timeout, unit);
             } catch (ExecutionException e) {
@@ -100,7 +100,7 @@ public class IngestionFuture implements Future<PublishResponse> {
                     means updated future object will be added for this request soon by callback
                     so continue till we find new future object which have success response
                  */
-                Future<PublishResponse> future = Demo.futureMap.get(publishRequest).get();
+                Future<PublishResponse> future = PubSubRequestFutureHolder.futureMap.get(publishRequest).get();
                 if (future != this)
                     apiFuture = future;
             } catch (Exception e) {
