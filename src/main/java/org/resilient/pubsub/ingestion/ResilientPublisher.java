@@ -1,6 +1,7 @@
 package org.resilient.pubsub.ingestion;
 
 import com.google.api.core.ApiFuture;
+import com.google.api.core.ApiFutureCallback;
 import com.google.api.core.ApiFutures;
 import com.google.api.gax.rpc.UnaryCallable;
 import com.google.common.util.concurrent.MoreExecutors;
@@ -11,9 +12,9 @@ import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.decorators.Decorators;
 import io.vavr.CheckedFunction0;
+import org.resilient.pubsub.example.Demo;
 import org.resilient.pubsub.factory.CircuitBreakerFactory;
 import org.resilient.pubsub.factory.IngestionClientFactory;
-import org.resilient.pubsub.utils.PubSubHelper;
 import org.resilient.pubsub.utils.PubSubRequestFutureHolder;
 
 import java.util.Collections;
@@ -41,9 +42,8 @@ public class ResilientPublisher implements IPublisher<PublishResponse>, IResilie
         this.circuitBreakerName = circuitBreakerName;
     }
 
-    public Future<PublishResponse> publish2(TopicName topicName, String message) {
-        PublishRequest publishRequest = PubSubHelper.getPublishRequest(topicName, message);
-        PubSubCallback pubSubCallback = new PubSubCallback(publishRequest, this, topicName);
+    public Future<PublishResponse> publish2(final PublishRequest publishRequest, TopicName topicName) {
+        String message = publishRequest.getMessages(0).getData().toStringUtf8();
         String cbname = getCircuitBreaker().getName();
 
         UnaryCallable<PublishRequest, PublishResponse> publishCallable = getPublishCallable();
@@ -51,7 +51,21 @@ public class ResilientPublisher implements IPublisher<PublishResponse>, IResilie
         ApiFuture<PublishResponse> apiFuture = publishCallable.futureCall(publishRequest);
         ApiFutures.addCallback(
                 apiFuture,
-                pubSubCallback,
+                new ApiFutureCallback<PublishResponse>() {
+                    @Override
+                    public void onFailure(Throwable throwable) {
+                        Demo.requestExecutionInfoHolder.append(publishRequest,
+                                "Error publishing message : " + message + " using " +
+                                        cbname);
+                    }
+
+                    @Override
+                    public void onSuccess(PublishResponse publishResponse) {
+                        Demo.requestExecutionInfoHolder.append(publishRequest,
+                                "Published message ID: " + message + " using " +
+                                cbname);
+                    }
+                },
                 MoreExecutors.directExecutor());
 
         CheckedFunction0<PublishResponse> decorated = Decorators
@@ -60,10 +74,8 @@ public class ResilientPublisher implements IPublisher<PublishResponse>, IResilie
                 })
                 .withCircuitBreaker(circuitBreaker)
                 .withFallback(
-                        Collections.singletonList(CallNotPermittedException.class),
+                        Collections.singletonList(Exception.class),
                         e -> {
-                            System.out.println("Call not permitted for message: " + message + " using " +
-                                    cbname);
                             ResilientPublisher fallbackPublisher = getFallbackPublisher();
                             if (fallbackPublisher != null)
                                 return fallbackPublisher.publish(publishRequest, topicName).get();
@@ -72,7 +84,7 @@ public class ResilientPublisher implements IPublisher<PublishResponse>, IResilie
                 .decorate();
 
 
-        CompletableFuture<PublishResponse> c = Decorators.ofCompletionStage(() -> {
+        return Decorators.ofCompletionStage(() -> {
             return CompletableFuture.supplyAsync(() -> {
                 try {
                     return decorated.apply();
@@ -81,12 +93,8 @@ public class ResilientPublisher implements IPublisher<PublishResponse>, IResilie
                 }
             });
         }).get().toCompletableFuture();
-
-
-        return c;
     }
 
-    @Override
     public Future<PublishResponse> publish(final PublishRequest publishRequest, TopicName topicName) {
         PubSubCallback pubSubCallback = new PubSubCallback(publishRequest, this, topicName);
 
