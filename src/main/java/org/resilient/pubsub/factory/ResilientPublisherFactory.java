@@ -32,8 +32,8 @@ public class ResilientPublisherFactory {
     public ResilientPublisher getActivePublisher() throws Exception {
         if (primaryPublisher == null) throw new Exception("No primary publisher set");
         ResilientPublisher active = primaryPublisher.get();
-        while (active.getCircuitBreaker().getState() == CircuitBreaker.State.OPEN ||
-                active.getCircuitBreaker().getState() == CircuitBreaker.State.FORCED_OPEN) {
+        while (active.getCircuitBreaker().getState() != CircuitBreaker.State.CLOSED &&
+                active.getCircuitBreaker().getState() != CircuitBreaker.State.HALF_OPEN) {
             active = active.getFallbackPublisher();
         }
         if (active == null) {

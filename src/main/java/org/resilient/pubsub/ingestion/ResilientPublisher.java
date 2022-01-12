@@ -42,6 +42,13 @@ public class ResilientPublisher implements IPublisher<PublishResponse>, IResilie
         this.circuitBreakerName = circuitBreakerName;
     }
 
+    /**
+     * It will create separate thread which will initiate circuitbreaker supplier
+     * and return future object on which user will do get
+     * @param publishRequest
+     * @param topicName
+     * @return
+     */
     public Future<PublishResponse> publish2(final PublishRequest publishRequest, TopicName topicName) {
         String message = publishRequest.getMessages(0).getData().toStringUtf8();
         String cbname = getCircuitBreaker().getName();
@@ -84,6 +91,9 @@ public class ResilientPublisher implements IPublisher<PublishResponse>, IResilie
                 .decorate();
 
 
+        /*
+            Creating separate thread for the execution
+         */
         return Decorators.ofCompletionStage(() -> {
             return CompletableFuture.supplyAsync(() -> {
                 try {
@@ -95,6 +105,15 @@ public class ResilientPublisher implements IPublisher<PublishResponse>, IResilie
         }).get().toCompletableFuture();
     }
 
+    /**
+     * It requires holding of future object for each request
+     * pubsub callback will update future object for corresponding request if fallback publisher is used
+     * Future object wrapper return from method will continue to do get on future object associated with the req,
+     * until there is a success response returned or no future object is associated with the request
+     * @param publishRequest
+     * @param topicName
+     * @return
+     */
     public Future<PublishResponse> publish(final PublishRequest publishRequest, TopicName topicName) {
         PubSubCallback pubSubCallback = new PubSubCallback(publishRequest, this, topicName);
 
