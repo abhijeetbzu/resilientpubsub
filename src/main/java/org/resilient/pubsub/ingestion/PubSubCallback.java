@@ -51,6 +51,13 @@ public class PubSubCallback implements ApiFutureCallback<PublishResponse> {
     @Override
     public void onSuccess(PublishResponse publishResponse) {
         // Once published, returns server-assigned message ids (unique within the topic)
+        try {
+            resilientPublisher.getCircuitBreaker().executeTrySupplier(() -> {
+                return Try.of(() -> "SUCCESS");
+            });
+        } catch (Throwable e) {
+            System.out.println("Error while communicating with CircuitBreaker!");
+        }
         Demo.requestExecutionInfoHolder.append(publishRequest, "Published message ID: " + message + " using " +
                 resilientPublisher.getCircuitBreaker().getName());
     }
